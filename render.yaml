@@ -1,0 +1,53 @@
+# ==============================================================================
+# CodeFolio Render Blueprint Specification (render.yaml)
+# ==============================================================================
+# This blueprint defines the backend Web Service for CodeFolio on Render.
+# Docs: https://render.com/docs/blueprint-spec
+# ==============================================================================
+
+services:
+  - type: web
+    name: codefolio-backend
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+    envVars:
+      # Production runtime indicator
+      - key: NODE_ENV
+        value: production
+
+      # Port (Render dynamically assigns PORT; default fallback 5000)
+      - key: PORT
+        value: 5000
+
+      # Allowed frontend origin for CORS.
+      # Set in the Render Dashboard to your verified Vercel URL (e.g. https://your-codefolio.vercel.app)
+      - key: CLIENT_URL
+        sync: false
+
+      # MongoDB Atlas connection string.
+      # Must be set in the Render Dashboard (e.g. mongodb+srv://<user>:<password>@cluster0.xxxx.mongodb.net/codefolio?retryWrites=true&w=majority)
+      - key: MONGO_URI
+        sync: false
+
+      # Cryptographic secrets auto-generated with high entropy by Render
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+
+      - key: CSRF_SECRET
+        generateValue: true
+
+      # Gmail SMTP Relay configuration for 6-digit OTP delivery and contact form
+      - key: SMTP_EMAIL
+        sync: false
+
+      - key: SMTP_APP_PASSWORD
+        sync: false
+

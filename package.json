@@ -1,0 +1,31 @@
+{
+  "name": "codefolio-monorepo",
+  "version": "1.0.0",
+  "description": "CodeFolio - Production-Grade MERN SaaS Portfolio Builder",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"server,client\" -c \"blue,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "test": "npm run test --workspace=server && npm run test --workspace=client",
+    "build": "npm run build --workspace=client",
+    "seed": "npm run seed --workspace=server",
+    "start": "npm run start --workspace=server",
+    "audit": "npm audit --omit=dev"
+  },
+  "keywords": [
+    "mern",
+    "portfolio",
+    "saas",
+    "security"
+  ],
+  "author": "CodeFolio Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
