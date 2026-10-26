@@ -46,13 +46,14 @@ app.use(
 );
 
 // 2. Strict CORS Configuration (permits any local dev port in development and strictly locks in production)
-const allowedOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+const allowedOrigin = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/+$/, '');
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (such as mobile apps, curl, or same-origin tests)
       if (!origin) return callback(null, true);
-      if (origin === allowedOrigin) {
+      const normalizedOrigin = origin.replace(/\/+$/, '');
+      if (normalizedOrigin === allowedOrigin) {
         return callback(null, true);
       }
       // In development or test, allow any localhost or 127.0.0.1 port (e.g. 5173, 5174, 5175)
