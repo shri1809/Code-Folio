@@ -145,13 +145,13 @@ git push origin main
    {
      "$schema": "https://openapi.vercel.sh/vercel.json",
      "framework": "vite",
-     "installCommand": "npm --prefix client ci",
+     "installCommand": "cd client && npm ci",
      "buildCommand": "npm --prefix client run build",
      "outputDirectory": "client/dist",
      "rewrites": [
        {
          "source": "/api/:path*",
-         "destination": "https://codefolio-backend-xxxx.onrender.com/api/:path*"
+         "destination": "https://code-folio-1.onrender.com/api/:path*"
        },
        {
          "source": "/((?!assets/|vite\\.svg|favicon\\.ico).*)",
@@ -175,7 +175,7 @@ git push origin main
    * **Project Name:** `codefolio` (or custom name)
    * **Framework Preset:** `Vite`
    * **Root Directory:** Leave as `./` (Repository root, so `vercel.json` is detected and edge rewrites are applied).
-   * **Build and Output Settings:** Leave default (Vercel reads `installCommand: "npm --prefix client ci"`, `buildCommand: "npm --prefix client run build"`, and `outputDirectory: "client/dist"` directly from `vercel.json`).
+   * **Build and Output Settings:** Leave default (Vercel reads `installCommand: "cd client && npm ci"`, `buildCommand: "npm --prefix client run build"`, and `outputDirectory: "client/dist"` directly from `vercel.json`).
    * **Environment Variables:** **None required.** The frontend uses `/api` relative paths proxied by Vercel's edge rewrites.
 5. Click **Deploy**.
 6. Wait for the build to finish (typically 30-45 seconds).
@@ -236,7 +236,7 @@ Before deploying, verify everything locally using the project scripts:
 
 ```bash
 # 1. Clean install client dependencies (matches Vercel installCommand)
-npm --prefix client ci
+cd client && npm ci
 
 # 2. Compile client production bundle (matches Vercel buildCommand)
 npm --prefix client run build
