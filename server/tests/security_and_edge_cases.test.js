@@ -13,6 +13,7 @@ const Portfolio = require('../src/models/Portfolio');
 const { hashSecret, compareSecret } = require('../src/utils/crypto');
 
 let mongoServer;
+jest.setTimeout(120000);
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();

@@ -2,8 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ProjectScreenshotUploader } from '../components/ProjectScreenshotUploader';
+import { apiClient } from '../api/client';
 
-describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
+vi.mock('../api/client', () => ({
+  apiClient: {
+    post: vi.fn(),
+  },
+}));
+
+describe('PROJECT SCREENSHOT DRAG & DROP AND DIRECT FILE UPLOADER TESTS', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -26,7 +33,7 @@ describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
 
     // URL input
     expect(
-      screen.getByPlaceholderText(/https:\/\/images\.unsplash\.com/i)
+      screen.getByPlaceholderText(/images\.unsplash\.com/i)
     ).toBeInTheDocument();
 
     // 1-Click Presets
@@ -34,8 +41,15 @@ describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
     expect(screen.getByRole('button', { name: /Web App/i })).toBeInTheDocument();
   });
 
-  it('should trigger upload when file is chosen via file picker (like resume)', () => {
+  it('should trigger direct upload to /upload/screenshot when file is chosen via file picker', async () => {
     const mockOnChange = vi.fn();
+    apiClient.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        url: '/api/uploads/65fa28974a6b1c1d88991234',
+      },
+    });
+
     render(
       <ProjectScreenshotUploader
         value=""
@@ -52,14 +66,27 @@ describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
 
     fireEvent.change(fileInput, { target: { files: [imageFile] } });
 
-    expect(mockOnChange).toHaveBeenCalled();
-    const calledUrl = mockOnChange.mock.calls[0][0];
-    expect(calledUrl).toContain('codefolio.dev/uploads/testdev');
-    expect(calledUrl).toContain('my-app-screen.png');
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith(
+        '/upload/screenshot',
+        expect.any(FormData),
+        expect.objectContaining({
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      );
+      expect(mockOnChange).toHaveBeenCalledWith('/api/uploads/65fa28974a6b1c1d88991234');
+    });
   });
 
-  it('should handle drag-and-drop lifecycle and drop image file', () => {
+  it('should handle drag-and-drop lifecycle and drop image file directly uploading', async () => {
     const mockOnChange = vi.fn();
+    apiClient.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        url: '/api/uploads/65fa28974a6b1c1d88995678',
+      },
+    });
+
     render(
       <ProjectScreenshotUploader
         value=""
@@ -73,7 +100,7 @@ describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
 
     // Drag Over
     fireEvent.dragOver(dropzone);
-    expect(screen.getByText(/Drop image here!/i)).toBeInTheDocument();
+    expect(screen.getByText(/Drop image here to upload!/i)).toBeInTheDocument();
 
     // Drag Leave
     fireEvent.dragLeave(dropzone);
@@ -89,9 +116,10 @@ describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
       },
     });
 
-    expect(mockOnChange).toHaveBeenCalled();
-    const calledUrl = mockOnChange.mock.calls[0][0];
-    expect(calledUrl).toContain('dropped-preview.webp');
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalled();
+      expect(mockOnChange).toHaveBeenCalledWith('/api/uploads/65fa28974a6b1c1d88995678');
+    });
   });
 
   it('should show error when non-image file is dropped', () => {
@@ -118,8 +146,41 @@ describe('PROJECT SCREENSHOT DRAG & DROP AND FILE UPLOADER TESTS', () => {
 
     expect(mockOnChange).not.toHaveBeenCalled();
     expect(
-      screen.getByText(/Please upload a valid image file/i)
+      screen.getByText(/Please select a valid image file/i)
     ).toBeInTheDocument();
+  });
+
+  it('should display upload error if server rejects upload', async () => {
+    const mockOnChange = vi.fn();
+    apiClient.post.mockRejectedValueOnce({
+      response: {
+        data: {
+          error: 'File size exceeds 5MB limit. Please choose a smaller image.',
+        },
+      },
+    });
+
+    render(
+      <ProjectScreenshotUploader
+        value=""
+        onChange={mockOnChange}
+        username="testdev"
+        index={0}
+      />
+    );
+
+    const fileInput = screen.getByTestId('file-input-0');
+    const imageFile = new File(['mock image content'], 'huge.png', {
+      type: 'image/png',
+    });
+
+    fireEvent.change(fileInput, { target: { files: [imageFile] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/File size exceeds 5MB limit/i)
+      ).toBeInTheDocument();
+    });
   });
 
   it('should update screenshot when 1-click preset button is clicked', () => {

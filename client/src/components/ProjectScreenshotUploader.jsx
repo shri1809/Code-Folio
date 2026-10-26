@@ -8,7 +8,9 @@ import {
   Sparkles,
   Upload,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
+import { apiClient } from '../api/client';
 import Button from './ui/Button';
 
 export const SCREENSHOT_PRESETS = [
@@ -38,6 +40,90 @@ export const SCREENSHOT_PRESETS = [
   },
 ];
 
+/**
+ * Optimizes images client-side before upload.
+ * Reduces 4K/high-res screenshots to max 1400px width/height in WebP format
+ * for near-instant upload speeds and minimal database storage.
+ */
+const compressImage = async (file) => {
+  if (file.type === 'image/svg+xml' || file.type === 'image/gif') {
+    return file;
+  }
+
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    // In headless test environments (jsdom), HTMLImageElement doesn't load src
+    const fallbackTimer = setTimeout(() => {
+      resolve(file);
+    }, 100);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        clearTimeout(fallbackTimer);
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1400;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const compressedFile = new File(
+                  [blob],
+                  file.name.replace(/\.[^/.]+$/, '') + '.webp',
+                  { type: 'image/webp' }
+                );
+                resolve(compressedFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/webp',
+            0.85
+          );
+        } catch {
+          resolve(file);
+        }
+      };
+      img.onerror = () => {
+        clearTimeout(fallbackTimer);
+        resolve(file);
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = () => {
+      clearTimeout(fallbackTimer);
+      resolve(file);
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 export const ProjectScreenshotUploader = ({
   value = '',
   onChange,
@@ -45,34 +131,62 @@ export const ProjectScreenshotUploader = ({
   index = 0,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [attachedFileName, setAttachedFileName] = useState('');
   const fileInputRef = useRef(null);
 
-  const handleFiles = (files) => {
+  const handleFiles = async (files) => {
     if (!files || files.length === 0) return;
     const file = files[0];
 
     // Validate that it's an image
     if (!file.type.startsWith('image/')) {
-      setUploadError('Please upload a valid image file (PNG, JPG, WEBP, or SVG).');
+      setUploadError('Please select a valid image file (PNG, JPG, WEBP, GIF, or SVG).');
       return;
     }
 
     setUploadError('');
-    setAttachedFileName(file.name);
+    setIsUploading(true);
 
-    // Create safe upload URL complying with backend constraints
-    const safeUploadUrl = `https://codefolio.dev/uploads/${username}-${Date.now()}-${encodeURIComponent(
-      file.name
-    )}`;
-    onChange(safeUploadUrl);
+    try {
+      // 1. Client-side compression for high-res screenshots
+      const processedFile = await compressImage(file);
+
+      // 2. Direct upload via FormData to authenticated API
+      const formData = new FormData();
+      formData.append('image', processedFile);
+
+      const res = await apiClient.post('/upload/screenshot', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (res.data?.success && res.data?.url) {
+        onChange(res.data.url);
+        setAttachedFileName(file.name);
+      } else {
+        throw new Error(res.data?.error || 'Failed to upload screenshot');
+      }
+    } catch (err) {
+      console.error('[Screenshot Direct Upload Error]:', err);
+      const message =
+        err.response?.data?.error ||
+        err.message ||
+        'Direct upload failed. Please try again or paste a hosted link.';
+      setUploadError(message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(true);
+    if (!isUploading) {
+      setIsDragging(true);
+    }
   };
 
   const handleDragLeave = (e) => {
@@ -85,7 +199,7 @@ export const ProjectScreenshotUploader = ({
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+    if (!isUploading && e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
   };
@@ -116,7 +230,7 @@ export const ProjectScreenshotUploader = ({
         </div>
       )}
 
-      {/* DRAG AND DROP ZONE (With File Picker like Resume) */}
+      {/* DRAG AND DROP ZONE (Direct upload from device) */}
       <div
         data-testid={`dropzone-${index}`}
         onDragOver={handleDragOver}
@@ -124,11 +238,17 @@ export const ProjectScreenshotUploader = ({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={`relative border-2 border-dashed rounded-2xl p-3.5 text-center transition-all duration-200 cursor-pointer ${
-          isDragging
+          isUploading
+            ? 'border-cyan-400/50 bg-cyan-500/5 cursor-wait'
+            : isDragging
             ? 'border-cyan-400 bg-cyan-500/15 shadow-[0_0_20px_rgba(0,243,255,0.25)] scale-[1.01]'
             : 'border-white/10 hover:border-white/20 bg-white/[0.02] hover:bg-white/[0.04]'
         }`}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (!isUploading) {
+            fileInputRef.current?.click();
+          }
+        }}
       >
         <input
           ref={fileInputRef}
@@ -136,24 +256,35 @@ export const ProjectScreenshotUploader = ({
           accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
           onChange={(e) => handleFiles(e.target.files)}
           className="hidden"
+          disabled={isUploading}
           data-testid={`file-input-${index}`}
         />
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 py-1">
           <div
             className={`w-9 h-9 rounded-xl flex items-center justify-center transition shrink-0 ${
-              isDragging
+              isUploading
+                ? 'bg-cyan-500/20 text-cyan-300'
+                : isDragging
                 ? 'bg-cyan-500/20 text-cyan-300'
                 : 'bg-white/[0.05] text-slate-400 group-hover:text-white'
             }`}
           >
-            <UploadCloud className="w-5 h-5 text-cyan-400" />
+            {isUploading ? (
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+            ) : (
+              <UploadCloud className="w-5 h-5 text-cyan-400" />
+            )}
           </div>
 
           <div className="text-center sm:text-left">
             <p className="text-xs font-semibold text-slate-200">
-              {isDragging ? (
-                <span className="text-cyan-300 font-bold">Drop image here!</span>
+              {isUploading ? (
+                <span className="text-cyan-300 font-bold flex items-center gap-1.5">
+                  Uploading image directly from device...
+                </span>
+              ) : isDragging ? (
+                <span className="text-cyan-300 font-bold">Drop image here to upload!</span>
               ) : (
                 <span>
                   <strong className="text-cyan-400 underline underline-offset-2">Drag &amp; drop</strong> screenshot, or{' '}
@@ -165,7 +296,7 @@ export const ProjectScreenshotUploader = ({
               )}
             </p>
             <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-              PNG, JPG, WEBP, or SVG supported
+              PNG, JPG, WEBP, GIF, or SVG (direct device upload to database)
             </p>
           </div>
         </div>
@@ -177,7 +308,7 @@ export const ProjectScreenshotUploader = ({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="https://images.unsplash.com/... or paste hosted image link"
+          placeholder="https://images.unsplash.com/..., /api/uploads/..., or paste hosted image link"
           className="w-full px-3.5 py-2 glass-input rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none transition font-mono shadow-inner"
         />
       </div>

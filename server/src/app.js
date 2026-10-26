@@ -8,6 +8,7 @@ const { resolveCustomDomain } = require('./middleware/customDomain');
 const authRoutes = require('./routes/authRoutes');
 const portfolioRoutes = require('./routes/portfolioRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use(
     frameguard: { action: 'deny' },
     noSniff: true,
     referrerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
 
@@ -101,6 +103,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // 8. 404 Route Handler
 app.use('/api/*', (req, res) => {
