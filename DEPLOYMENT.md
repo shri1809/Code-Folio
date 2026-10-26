@@ -145,8 +145,8 @@ git push origin main
    {
      "$schema": "https://openapi.vercel.sh/vercel.json",
      "framework": "vite",
-     "installCommand": "cd client && npm ci",
-     "buildCommand": "npm --prefix client run build",
+     "installCommand": "npm ci --workspace=client",
+     "buildCommand": "npm run build --workspace=client",
      "outputDirectory": "client/dist",
      "rewrites": [
        {
@@ -175,7 +175,7 @@ git push origin main
    * **Project Name:** `codefolio` (or custom name)
    * **Framework Preset:** `Vite`
    * **Root Directory:** Leave as `./` (Repository root, so `vercel.json` is detected and edge rewrites are applied).
-   * **Build and Output Settings:** Leave default (Vercel reads `installCommand: "cd client && npm ci"`, `buildCommand: "npm --prefix client run build"`, and `outputDirectory: "client/dist"` directly from `vercel.json`).
+   * **Build and Output Settings:** Leave default (Vercel reads `installCommand: "npm ci --workspace=client"`, `buildCommand: "npm run build --workspace=client"`, and `outputDirectory: "client/dist"` directly from `vercel.json`).
    * **Environment Variables:** **None required.** The frontend uses `/api` relative paths proxied by Vercel's edge rewrites.
 5. Click **Deploy**.
 6. Wait for the build to finish (typically 30-45 seconds).
@@ -236,10 +236,10 @@ Before deploying, verify everything locally using the project scripts:
 
 ```bash
 # 1. Clean install client dependencies (matches Vercel installCommand)
-cd client && npm ci
+npm ci --workspace=client
 
 # 2. Compile client production bundle (matches Vercel buildCommand)
-npm --prefix client run build
+npm run build --workspace=client
 
 # 3. Run full client test suite (131 tests)
 npm --prefix client test -- --run

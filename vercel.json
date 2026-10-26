@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "cd client && npm ci",
-  "buildCommand": "npm --prefix client run build",
+  "installCommand": "npm ci --workspace=client",
+  "buildCommand": "npm run build --workspace=client",
   "outputDirectory": "client/dist",
   "rewrites": [
     {
