@@ -4,18 +4,23 @@ const nodemailer = require('nodemailer');
  * Creates and returns the Gmail SMTP transporter
  */
 const createTransporter = () => {
+  const user = (process.env.SMTP_EMAIL || '').trim();
+  const pass = (process.env.SMTP_APP_PASSWORD || '').replace(/\s+/g, '').trim();
+
+  if (!user || !pass) {
+    throw new Error('SMTP credentials missing: SMTP_EMAIL and SMTP_APP_PASSWORD must be configured in environment variables.');
+  }
+
   return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
+    service: 'gmail',
     auth: {
-      user: process.env.SMTP_EMAIL,
-      pass: process.env.SMTP_APP_PASSWORD,
+      user,
+      pass,
     },
     // Prevent hanging sockets
-    connectionTimeout: 10000,
-    greetingTimeout: 5000,
-    socketTimeout: 10000,
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 };
 

@@ -81,15 +81,22 @@ const register = async (req, res) => {
         existingEmail.otpLockoutUntil = null;
         await existingEmail.save();
 
+        let emailDispatched = true;
+        let emailWarning = null;
         try {
           await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
         } catch (mailErr) {
+          emailDispatched = false;
+          emailWarning = mailErr.message;
           console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
         }
 
         return res.status(200).json({
           success: true,
-          message: 'Account pending verification. A fresh 6-digit verification code has been dispatched to your email.',
+          emailSent: emailDispatched,
+          message: emailDispatched
+            ? 'Account pending verification. A fresh 6-digit verification code has been dispatched to your email.'
+            : `Verification code refreshed, but email delivery failed (${emailWarning || 'SMTP error'}). Please verify SMTP credentials on Render.`,
           user: {
             id: existingEmail._id,
             username: existingEmail.username,
@@ -140,15 +147,22 @@ const register = async (req, res) => {
     });
 
     // Dispatch verification OTP email
+    let emailDispatched = true;
+    let emailWarning = null;
     try {
       await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
     } catch (mailErr) {
+      emailDispatched = false;
+      emailWarning = mailErr.message;
       console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
     }
 
     return res.status(201).json({
       success: true,
-      message: 'Registration successful. A 6-digit verification code has been dispatched to your email.',
+      emailSent: emailDispatched,
+      message: emailDispatched
+        ? 'Registration successful. A 6-digit verification code has been dispatched to your email.'
+        : `Registration successful, but email delivery failed (${emailWarning || 'SMTP error'}). Please verify SMTP credentials on Render.`,
       user: {
         id: newUser._id,
         name: newUser.name || '',
@@ -207,9 +221,10 @@ const requestOtp = async (req, res) => {
     try {
       await sendOtpEmail(user.email, otpCode, user.username);
     } catch (mailErr) {
+      console.error(`[RequestOtp] Mail dispatch failed: ${mailErr.message}`);
       return res.status(503).json({
         success: false,
-        error: 'Email service unavailable: Unable to deliver OTP. Please try again shortly.',
+        error: `Email delivery failed (${mailErr.message}). Please verify SMTP_EMAIL and SMTP_APP_PASSWORD in Render settings.`,
       });
     }
 
