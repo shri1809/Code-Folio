@@ -66,43 +66,65 @@ const register = async (req, res) => {
 
     // Check existing email
     const existingEmail = await User.findOne({ email: normalizedEmail });
+    const requireVerification = process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+
     if (existingEmail) {
       if (!existingEmail.isVerified) {
         const passwordHash = await hashSecret(password);
-        const otpCode = generateOtp();
-        const otpCodeHash = await hashSecret(otpCode);
-        const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
         existingEmail.username = normalizedUsername;
         existingEmail.passwordHash = passwordHash;
-        existingEmail.otpCodeHash = otpCodeHash;
-        existingEmail.otpExpiresAt = otpExpiresAt;
         existingEmail.otpAttempts = 0;
         existingEmail.otpLockoutUntil = null;
+
+        if (requireVerification) {
+          const otpCode = generateOtp();
+          existingEmail.otpCodeHash = await hashSecret(otpCode);
+          existingEmail.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+          await existingEmail.save();
+
+          try {
+            await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
+          } catch (mailErr) {
+            console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
+          }
+
+          return res.status(200).json({
+            success: true,
+            requiresOtp: true,
+            message: 'Account pending verification. A fresh 6-digit verification code has been dispatched to your email.',
+            user: {
+              id: existingEmail._id,
+              username: existingEmail.username,
+              email: existingEmail.email,
+              role: existingEmail.role,
+              isVerified: false,
+            },
+          });
+        }
+
+        // Auto-verify account when email verification is optional
+        existingEmail.isVerified = true;
+        existingEmail.otpCodeHash = null;
+        existingEmail.otpExpiresAt = null;
         await existingEmail.save();
 
-        let emailDispatched = true;
-        let emailWarning = null;
-        try {
-          await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
-        } catch (mailErr) {
-          emailDispatched = false;
-          emailWarning = mailErr.message;
-          console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
-        }
+        const accessToken = generateAccessToken(existingEmail);
+        const refreshToken = generateRefreshToken(existingEmail);
+        setAuthCookies(res, accessToken, refreshToken);
 
         return res.status(200).json({
           success: true,
-          emailSent: emailDispatched,
-          message: emailDispatched
-            ? 'Account pending verification. A fresh 6-digit verification code has been dispatched to your email.'
-            : `Verification code refreshed, but email delivery failed (${emailWarning || 'SMTP error'}). Please verify SMTP credentials on Render.`,
+          requiresOtp: false,
+          message: 'Account activated successfully. Welcome to CodeFolio!',
           user: {
             id: existingEmail._id,
+            name: existingEmail.name || '',
             username: existingEmail.username,
             email: existingEmail.email,
             role: existingEmail.role,
-            isVerified: false,
+            isVerified: true,
+            isPro: existingEmail.isPro,
+            templateId: existingEmail.templateId,
           },
         });
       }
@@ -115,8 +137,9 @@ const register = async (req, res) => {
 
     // Hash password with bcrypt 12 rounds
     const passwordHash = await hashSecret(password);
+    const isInitiallyVerified = !requireVerification;
 
-    // Generate initial 6-digit OTP for email verification
+    // Generate initial 6-digit OTP for email verification if required
     const otpCode = generateOtp();
     const otpCodeHash = await hashSecret(otpCode);
     const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
@@ -126,9 +149,9 @@ const register = async (req, res) => {
       username: normalizedUsername,
       email: normalizedEmail,
       passwordHash,
-      isVerified: false,
-      otpCodeHash,
-      otpExpiresAt,
+      isVerified: isInitiallyVerified,
+      otpCodeHash: isInitiallyVerified ? null : otpCodeHash,
+      otpExpiresAt: isInitiallyVerified ? null : otpExpiresAt,
       otpAttempts: 0,
       templateId: 'minimalist',
     });
@@ -146,30 +169,44 @@ const register = async (req, res) => {
       projects: [],
     });
 
-    // Dispatch verification OTP email
-    let emailDispatched = true;
-    let emailWarning = null;
-    try {
-      await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
-    } catch (mailErr) {
-      emailDispatched = false;
-      emailWarning = mailErr.message;
-      console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
+    if (requireVerification) {
+      try {
+        await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
+      } catch (mailErr) {
+        console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
+      }
+
+      return res.status(201).json({
+        success: true,
+        requiresOtp: true,
+        message: 'Registration successful. A 6-digit verification code has been dispatched to your email.',
+        user: {
+          id: newUser._id,
+          name: newUser.name || '',
+          username: newUser.username,
+          email: newUser.email,
+          role: newUser.role,
+          isVerified: false,
+        },
+      });
     }
+
+    // Auto-verified: Issue session tokens immediately
+    const accessToken = generateAccessToken(newUser);
+    const refreshToken = generateRefreshToken(newUser);
+    setAuthCookies(res, accessToken, refreshToken);
 
     return res.status(201).json({
       success: true,
-      emailSent: emailDispatched,
-      message: emailDispatched
-        ? 'Registration successful. A 6-digit verification code has been dispatched to your email.'
-        : `Registration successful, but email delivery failed (${emailWarning || 'SMTP error'}). Please verify SMTP credentials on Render.`,
+      requiresOtp: false,
+      message: 'Registration successful. Welcome to CodeFolio!',
       user: {
         id: newUser._id,
         name: newUser.name || '',
         username: newUser.username,
         email: newUser.email,
         role: newUser.role,
-        isVerified: newUser.isVerified,
+        isVerified: true,
       },
     });
   } catch (err) {
@@ -378,8 +415,40 @@ const login = async (req, res) => {
       });
     }
 
-    // If user is not yet verified or MFA is enabled, initiate OTP flow
-    if (!user.isVerified || user.mfaEnabled) {
+    // Check verification status
+    const requireVerification = process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+    if (!user.isVerified) {
+      if (!requireVerification) {
+        // Auto-activate unverified user on valid credentials
+        user.isVerified = true;
+        user.otpCodeHash = null;
+        user.otpExpiresAt = null;
+        user.otpAttempts = 0;
+        user.otpLockoutUntil = null;
+        await user.save();
+      } else {
+        const otpCode = generateOtp();
+        user.otpCodeHash = await hashSecret(otpCode);
+        user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        user.otpAttempts = 0;
+        await user.save();
+
+        try {
+          await sendOtpEmail(user.email, otpCode, user.username);
+        } catch (mailErr) {
+          console.warn(`[Login] OTP mail dispatch failed: ${mailErr.message}`);
+        }
+
+        return res.status(200).json({
+          success: true,
+          mfaRequired: true,
+          email: user.email,
+          message: 'Email verification required. Verification code sent to your email.',
+        });
+      }
+    }
+
+    if (user.mfaEnabled) {
       const otpCode = generateOtp();
       user.otpCodeHash = await hashSecret(otpCode);
       user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -389,16 +458,14 @@ const login = async (req, res) => {
       try {
         await sendOtpEmail(user.email, otpCode, user.username);
       } catch (mailErr) {
-        console.warn(`[Login] OTP mail dispatch failed: ${mailErr.message}`);
+        console.warn(`[Login] MFA mail dispatch failed: ${mailErr.message}`);
       }
 
       return res.status(200).json({
         success: true,
         mfaRequired: true,
         email: user.email,
-        message: !user.isVerified
-          ? 'Email verification required. Verification code sent to your email.'
-          : 'Two-factor authentication required. Verification code sent to email.',
+        message: 'Two-factor authentication required. Verification code sent to email.',
       });
     }
 

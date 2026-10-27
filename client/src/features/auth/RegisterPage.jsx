@@ -45,7 +45,11 @@ export const RegisterPage = () => {
         ? await register(cleanUsername, email.trim(), password, name.trim())
         : await register(cleanUsername, email.trim(), password);
       if (res?.success) {
-        setIsOtpModalOpen(true);
+        if (res.requiresOtp === false || res.user?.isVerified) {
+          navigate('/dashboard', { replace: true });
+        } else {
+          setIsOtpModalOpen(true);
+        }
       } else {
         setError(res?.error || 'Registration failed.');
       }

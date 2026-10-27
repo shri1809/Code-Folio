@@ -1,6 +1,40 @@
 const nodemailer = require('nodemailer');
 
 /**
+ * Send email via Resend REST API (HTTPS Port 443 - never blocked by Render cloud firewall)
+ */
+const sendViaResend = async ({ to, subject, html, text }) => {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM || 'CodeFolio <onboarding@resend.dev>',
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html,
+        text,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Resend HTTP API returned error');
+    }
+    return { messageId: data.id, accepted: [to], provider: 'resend' };
+  } catch (err) {
+    console.error(`[Resend HTTP Error]: ${err.message}`);
+    throw err;
+  }
+};
+
+/**
  * Creates and returns the Gmail SMTP transporter
  */
 const createTransporter = () => {
@@ -55,8 +89,6 @@ const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
     };
   }
 
-  const transporter = createTransporter();
-
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
       <h2 style="color: #111827; margin-bottom: 8px;">CodeFolio Security Verification</h2>
@@ -70,6 +102,18 @@ const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
       <p style="color: #9ca3af; font-size: 11px; text-align: center;">CodeFolio &copy; 2026. Built with high security by design.</p>
     </div>
   `;
+
+  // Prefer Resend REST API if configured (uses HTTPS port 443; never blocked on cloud hosting)
+  if (process.env.RESEND_API_KEY) {
+    return await sendViaResend({
+      to: toEmail,
+      subject: `Your CodeFolio Verification Code: ${otpCode}`,
+      html: htmlContent,
+      text: `Hello ${username},\n\nYour 6-digit CodeFolio verification code is: ${otpCode}\n\nThis code expires in 5 minutes.\n\nCodeFolio Team`,
+    });
+  }
+
+  const transporter = createTransporter();
 
   const mailOptions = {
     from: `"CodeFolio Security" <${process.env.SMTP_EMAIL || 'security@codefolio.dev'}>`,
@@ -119,8 +163,6 @@ const sendContactRelayEmail = async (
     };
   }
 
-  const transporter = createTransporter();
-
   const safeSubject = subject || `New contact inquiry for @${developerUsername}`;
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
@@ -138,6 +180,17 @@ const sendContactRelayEmail = async (
       <p style="color: #9ca3af; font-size: 11px;">Notice: Your email address was NOT exposed to the sender.</p>
     </div>
   `;
+
+  if (process.env.RESEND_API_KEY) {
+    return await sendViaResend({
+      to: recipientEmail,
+      subject: `[CodeFolio Contact] ${safeSubject}`,
+      html: htmlContent,
+      text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
+    });
+  }
+
+  const transporter = createTransporter();
 
   const mailOptions = {
     from: `"CodeFolio Contact Relay" <${process.env.SMTP_EMAIL || 'relay@codefolio.dev'}>`,

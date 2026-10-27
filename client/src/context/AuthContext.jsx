@@ -62,6 +62,9 @@ export const AuthProvider = ({ children }) => {
     const payload = { username, email, password };
     if (name) payload.name = name;
     const res = await apiClient.post('/auth/register', payload);
+    if (res.data?.success && res.data.user && res.data.requiresOtp === false) {
+      setUser(res.data.user);
+    }
     return res.data;
   };
 
