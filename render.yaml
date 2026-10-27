@@ -51,3 +51,10 @@ services:
       - key: SMTP_APP_PASSWORD
         sync: false
 
+      # Brevo (Sendinblue) HTTP REST API for Port 443 cloud email delivery
+      - key: BREVO_API_KEY
+        sync: false
+
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+

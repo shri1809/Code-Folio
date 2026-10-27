@@ -176,13 +176,13 @@ const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
   const subject = `Your CodeFolio Verification Code: ${otpCode}`;
   const text = `Hello ${username},\n\nYour 6-digit CodeFolio verification code is: ${otpCode}\n\nThis code expires in 5 minutes.\n\nCodeFolio Team`;
 
-  // 1. Try Resend HTTP API (Port 443)
-  const resendResult = await sendViaResend({ to: toEmail, subject, html: htmlContent, text });
-  if (resendResult?.delivered) return resendResult;
-
-  // 2. Try Brevo HTTP API (Port 443)
+  // 1. Try Brevo HTTP API (Port 443 - Verified & Active)
   const brevoResult = await sendViaBrevo({ to: toEmail, subject, html: htmlContent, senderName: 'CodeFolio Security' });
   if (brevoResult?.delivered) return brevoResult;
+
+  // 2. Try Resend HTTP API (Port 443)
+  const resendResult = await sendViaResend({ to: toEmail, subject, html: htmlContent, text });
+  if (resendResult?.delivered) return resendResult;
 
   // 3. Try SendGrid HTTP API (Port 443)
   const sendgridResult = await sendViaSendGrid({ to: toEmail, subject, html: htmlContent });
@@ -252,16 +252,7 @@ const sendContactRelayEmail = async (
     </div>
   `;
 
-  // 1. Resend
-  const resendResult = await sendViaResend({
-    to: recipientEmail,
-    subject: `[CodeFolio Contact] ${safeSubject}`,
-    html: htmlContent,
-    text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
-  });
-  if (resendResult?.delivered) return resendResult;
-
-  // 2. Brevo
+  // 1. Brevo HTTP API (Port 443)
   const brevoResult = await sendViaBrevo({
     to: recipientEmail,
     subject: `[CodeFolio Contact] ${safeSubject}`,
@@ -270,6 +261,15 @@ const sendContactRelayEmail = async (
     senderName: 'CodeFolio Contact Relay',
   });
   if (brevoResult?.delivered) return brevoResult;
+
+  // 2. Resend
+  const resendResult = await sendViaResend({
+    to: recipientEmail,
+    subject: `[CodeFolio Contact] ${safeSubject}`,
+    html: htmlContent,
+    text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
+  });
+  if (resendResult?.delivered) return resendResult;
 
   // 3. SMTP
   const transporter = createTransporter();
