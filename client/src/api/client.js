@@ -12,8 +12,8 @@ export const apiClient = axios.create({
   },
 });
 
-// Fetch CSRF token from the server
-export const fetchCsrfToken = async () => {
+// Fetch CSRF token from the server with auto-retry for cold starts
+export const fetchCsrfToken = async (retryCount = 0) => {
   try {
     const res = await axios.get(`${API_BASE_URL}/auth/csrf-token`, { withCredentials: true });
     if (res.data && res.data.csrfToken) {
@@ -21,6 +21,10 @@ export const fetchCsrfToken = async () => {
       return cachedCsrfToken;
     }
   } catch (err) {
+    if ((err.response?.status === 502 || err.response?.status === 504 || !err.response) && retryCount < 2) {
+      await new Promise((r) => setTimeout(r, 2000));
+      return fetchCsrfToken(retryCount + 1);
+    }
     console.warn('[CSRF] Could not fetch CSRF token:', err.message);
   }
   return null;
@@ -45,11 +49,33 @@ apiClient.interceptors.request.use(async (config) => {
   return Promise.reject(error);
 });
 
-// Response interceptor: auto-retry with fresh CSRF token if EBADCSRFTOKEN happens
+// Response interceptor: auto-retry with fresh CSRF token if EBADCSRFTOKEN happens,
+// and auto-retry on 502/504 gateway cold start delays
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    if (!originalRequest) return Promise.reject(error);
+
+    // Auto-retry on Render cold starts (Vercel 502/504 Bad Gateway / Gateway Timeout)
+    if (
+      (error.response?.status === 502 ||
+        error.response?.status === 503 ||
+        error.response?.status === 504 ||
+        (!error.response && error.code === 'ERR_NETWORK')) &&
+      (!originalRequest._coldStartRetryCount || originalRequest._coldStartRetryCount < 2)
+    ) {
+      originalRequest._coldStartRetryCount = (originalRequest._coldStartRetryCount || 0) + 1;
+      await new Promise((r) => setTimeout(r, 2500));
+      if (!cachedCsrfToken) {
+        await fetchCsrfToken();
+      }
+      if (cachedCsrfToken) {
+        originalRequest.headers['x-csrf-token'] = cachedCsrfToken;
+      }
+      return apiClient(originalRequest);
+    }
+
     if (
       error.response &&
       error.response.status === 403 &&

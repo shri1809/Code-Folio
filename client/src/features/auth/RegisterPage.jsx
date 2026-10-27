@@ -50,11 +50,15 @@ export const RegisterPage = () => {
         setError(res?.error || 'Registration failed.');
       }
     } catch (err) {
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.errors?.[0]?.message ||
-          'Registration encountered an error.'
-      );
+      if (err.response?.status === 502 || err.response?.status === 503 || err.response?.status === 504) {
+        setError('The server is waking up from idle sleep (Render free tier). Please wait a few seconds and try again.');
+      } else {
+        setError(
+          err.response?.data?.error ||
+            err.response?.data?.errors?.[0]?.message ||
+            'Registration encountered an error.'
+        );
+      }
     } finally {
       setLoading(false);
     }

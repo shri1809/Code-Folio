@@ -36,9 +36,13 @@ export const LoginPage = () => {
         setError(res?.error || 'Invalid email or password.');
       }
     } catch (err) {
-      setError(
-        err.response?.data?.error || 'Login failed. Please verify your credentials.'
-      );
+      if (err.response?.status === 502 || err.response?.status === 503 || err.response?.status === 504) {
+        setError('The server is waking up from idle sleep (Render free tier). Please wait a few seconds and try again.');
+      } else {
+        setError(
+          err.response?.data?.error || 'Login failed. Please verify your credentials.'
+        );
+      }
     } finally {
       setLoading(false);
     }
