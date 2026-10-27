@@ -19,6 +19,7 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+  const [sandboxOtp, setSandboxOtp] = useState('');
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -58,6 +59,9 @@ export const LoginPage = () => {
     try {
       const res = await requestOtp(email);
       if (res?.success) {
+        if (res.sandboxOtp) {
+          setSandboxOtp(res.sandboxOtp);
+        }
         setIsOtpModalOpen(true);
       } else {
         setError(res?.error || 'Failed to dispatch OTP.');
@@ -197,6 +201,7 @@ export const LoginPage = () => {
         <OtpVerificationModal
           isOpen={isOtpModalOpen}
           email={email}
+          initialSandboxOtp={sandboxOtp}
           onClose={() => setIsOtpModalOpen(false)}
           onSuccess={() => navigate(from, { replace: true })}
         />

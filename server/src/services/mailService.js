@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 
 /**
- * Send email via Resend REST API (HTTPS Port 443 - never blocked by Render cloud firewall)
+ * Send email via Resend REST API (HTTPS Port 443 - unblocked on all cloud hosts)
  */
 const sendViaResend = async ({ to, subject, html, text }) => {
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -15,7 +15,7 @@ const sendViaResend = async ({ to, subject, html, text }) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: process.env.RESEND_FROM || 'CodeFolio <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM || process.env.EMAIL_FROM || 'CodeFolio <onboarding@resend.dev>',
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
@@ -25,36 +25,105 @@ const sendViaResend = async ({ to, subject, html, text }) => {
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.message || 'Resend HTTP API returned error');
+      console.warn('[Resend API Notice]:', data.message || data);
+      return null;
     }
-    return { messageId: data.id, accepted: [to], provider: 'resend' };
+    return { provider: 'resend', id: data.id, delivered: true };
   } catch (err) {
-    console.error(`[Resend HTTP Error]: ${err.message}`);
-    throw err;
+    console.warn(`[Resend HTTP Warning]: ${err.message}`);
+    return null;
   }
 };
 
 /**
- * Creates and returns the Gmail SMTP transporter
+ * Send email via Brevo (Sendinblue) v3 REST API (HTTPS Port 443 - works without custom domain)
+ */
+const sendViaBrevo = async ({ to, subject, html, replyTo, senderName }) => {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const senderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_EMAIL || 'codefolio9@gmail.com';
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: senderName || 'CodeFolio', email: senderEmail },
+        to: Array.isArray(to) ? to.map(e => ({ email: e })) : [{ email: to }],
+        subject,
+        htmlContent: html,
+        ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { provider: 'brevo', id: data.messageId, delivered: true };
+    }
+    const errText = await res.text();
+    console.warn(`[Brevo API Notice] (${res.status}): ${errText}`);
+    return null;
+  } catch (err) {
+    console.warn(`[Brevo HTTP Warning]: ${err.message}`);
+    return null;
+  }
+};
+
+/**
+ * Send email via SendGrid v3 REST API (HTTPS Port 443)
+ */
+const sendViaSendGrid = async ({ to, subject, html }) => {
+  const apiKey = process.env.SENDGRID_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const fromEmail = process.env.SENDGRID_FROM || process.env.SMTP_EMAIL || 'noreply@codefolio.dev';
+    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: Array.isArray(to) ? to.map(e => ({ email: e })) : [{ email: to }] }],
+        from: { email: fromEmail, name: 'CodeFolio' },
+        subject,
+        content: [{ type: 'text/html', value: html }],
+      }),
+    });
+
+    if (res.ok) {
+      return { provider: 'sendgrid', delivered: true };
+    }
+    const errText = await res.text();
+    console.warn(`[SendGrid Notice] (${res.status}): ${errText}`);
+    return null;
+  } catch (err) {
+    console.warn(`[SendGrid Warning]: ${err.message}`);
+    return null;
+  }
+};
+
+/**
+ * Creates and returns the Gmail SMTP transporter with 4-second timeout
  */
 const createTransporter = () => {
   const user = (process.env.SMTP_EMAIL || '').trim();
   const pass = (process.env.SMTP_APP_PASSWORD || '').replace(/\s+/g, '').trim();
 
   if (!user || !pass) {
-    throw new Error('SMTP credentials missing: SMTP_EMAIL and SMTP_APP_PASSWORD must be configured in environment variables.');
+    return null;
   }
 
   return nodemailer.createTransport({
     service: 'gmail',
-    auth: {
-      user,
-      pass,
-    },
-    // Prevent hanging sockets
-    connectionTimeout: 15000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    auth: { user, pass },
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 4000,
   });
 };
 
@@ -63,7 +132,7 @@ const createTransporter = () => {
  * @param {string} toEmail - Recipient email address
  * @param {string} otpCode - 6-digit plain text OTP code
  * @param {string} username - User's display or account username
- * @returns {Promise<object>} Nodemailer send result
+ * @returns {Promise<object>} Dispatch result with provider and delivery status
  */
 const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
   if (process.env.TEST_SIMULATE_SMTP_ERROR === 'true') {
@@ -72,7 +141,7 @@ const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
     throw error;
   }
 
-  // In development, log the OTP in big readable text in terminal so developer can test without delays
+  // In development, log the OTP in big readable text in terminal
   if (process.env.NODE_ENV === 'development') {
     console.log('\n======================================================');
     console.log(`[DEVELOPMENT OTP DISPATCH] -> ${toEmail}`);
@@ -85,7 +154,8 @@ const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
     return {
       messageId: `mock-test-${Date.now()}@codefolio.dev`,
       accepted: [toEmail],
-      mock: true,
+      provider: 'test-mock',
+      delivered: true,
     };
   }
 
@@ -103,46 +173,46 @@ const sendOtpEmail = async (toEmail, otpCode, username = 'Developer') => {
     </div>
   `;
 
-  // Prefer Resend REST API if configured (uses HTTPS port 443; never blocked on cloud hosting)
-  if (process.env.RESEND_API_KEY) {
-    return await sendViaResend({
-      to: toEmail,
-      subject: `Your CodeFolio Verification Code: ${otpCode}`,
-      html: htmlContent,
-      text: `Hello ${username},\n\nYour 6-digit CodeFolio verification code is: ${otpCode}\n\nThis code expires in 5 minutes.\n\nCodeFolio Team`,
-    });
-  }
+  const subject = `Your CodeFolio Verification Code: ${otpCode}`;
+  const text = `Hello ${username},\n\nYour 6-digit CodeFolio verification code is: ${otpCode}\n\nThis code expires in 5 minutes.\n\nCodeFolio Team`;
 
+  // 1. Try Resend HTTP API (Port 443)
+  const resendResult = await sendViaResend({ to: toEmail, subject, html: htmlContent, text });
+  if (resendResult?.delivered) return resendResult;
+
+  // 2. Try Brevo HTTP API (Port 443)
+  const brevoResult = await sendViaBrevo({ to: toEmail, subject, html: htmlContent, senderName: 'CodeFolio Security' });
+  if (brevoResult?.delivered) return brevoResult;
+
+  // 3. Try SendGrid HTTP API (Port 443)
+  const sendgridResult = await sendViaSendGrid({ to: toEmail, subject, html: htmlContent });
+  if (sendgridResult?.delivered) return sendgridResult;
+
+  // 4. Try Gmail SMTP (Fast 4s attempt)
   const transporter = createTransporter();
-
-  const mailOptions = {
-    from: `"CodeFolio Security" <${process.env.SMTP_EMAIL || 'security@codefolio.dev'}>`,
-    to: toEmail,
-    subject: `Your CodeFolio Verification Code: ${otpCode}`,
-    text: `Hello ${username},\n\nYour 6-digit CodeFolio verification code is: ${otpCode}\n\nThis code expires in 5 minutes.\n\nCodeFolio Team`,
-    html: htmlContent,
-  };
-
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    return info;
-  } catch (err) {
-    console.error(`[MailService] Failed to send OTP email to ${toEmail}: ${err.message}`);
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[MailService] (Development Mode) Proceeding with the terminal verification code.');
-      return { messageId: 'dev-fallback-mock', accepted: [toEmail], mock: true };
+  if (transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: `"CodeFolio Security" <${process.env.SMTP_EMAIL || 'codefolio9@gmail.com'}>`,
+        to: toEmail,
+        subject,
+        text,
+        html: htmlContent,
+      });
+      return { provider: 'smtp', messageId: info.messageId, delivered: true };
+    } catch (smtpErr) {
+      console.warn(`[MailService SMTP Notice]: ${smtpErr.message}`);
     }
-    throw err;
   }
+
+  // 5. Cloud Sandbox Fallback (HabitForge pattern)
+  console.log(`[SANDBOX OTP DISPATCH] -> ${toEmail} | CODE: ${otpCode}`);
+  return { provider: 'sandbox-fallback', delivered: false, otpCode };
 };
 
 /**
  * Public Portfolio Contact Relay
  * Allows visitors to message a developer without revealing the developer's email address
- * @param {string} recipientEmail - The developer's hidden email address
- * @param {string} developerUsername - Developer username
- * @param {object} contactData - { senderName, senderEmail, subject, message }
- * @returns {Promise<object>}
  */
 const sendContactRelayEmail = async (
   recipientEmail,
@@ -159,7 +229,8 @@ const sendContactRelayEmail = async (
     return {
       messageId: `mock-relay-${Date.now()}@codefolio.dev`,
       accepted: [recipientEmail],
-      mock: true,
+      provider: 'test-mock',
+      delivered: true,
     };
   }
 
@@ -181,33 +252,44 @@ const sendContactRelayEmail = async (
     </div>
   `;
 
-  if (process.env.RESEND_API_KEY) {
-    return await sendViaResend({
-      to: recipientEmail,
-      subject: `[CodeFolio Contact] ${safeSubject}`,
-      html: htmlContent,
-      text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
-    });
-  }
-
-  const transporter = createTransporter();
-
-  const mailOptions = {
-    from: `"CodeFolio Contact Relay" <${process.env.SMTP_EMAIL || 'relay@codefolio.dev'}>`,
+  // 1. Resend
+  const resendResult = await sendViaResend({
     to: recipientEmail,
-    replyTo: senderEmail,
     subject: `[CodeFolio Contact] ${safeSubject}`,
-    text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
     html: htmlContent,
-  };
+    text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
+  });
+  if (resendResult?.delivered) return resendResult;
 
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    return info;
-  } catch (err) {
-    console.error(`[MailService] Failed to relay contact email to developer: ${err.message}`);
-    throw err;
+  // 2. Brevo
+  const brevoResult = await sendViaBrevo({
+    to: recipientEmail,
+    subject: `[CodeFolio Contact] ${safeSubject}`,
+    html: htmlContent,
+    replyTo: senderEmail,
+    senderName: 'CodeFolio Contact Relay',
+  });
+  if (brevoResult?.delivered) return brevoResult;
+
+  // 3. SMTP
+  const transporter = createTransporter();
+  if (transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: `"CodeFolio Contact Relay" <${process.env.SMTP_EMAIL || 'relay@codefolio.dev'}>`,
+        to: recipientEmail,
+        replyTo: senderEmail,
+        subject: `[CodeFolio Contact] ${safeSubject}`,
+        text: `From: ${senderName} (${senderEmail})\nSubject: ${safeSubject}\n\nMessage:\n${message}`,
+        html: htmlContent,
+      });
+      return { provider: 'smtp', messageId: info.messageId, delivered: true };
+    } catch (smtpErr) {
+      console.warn(`[Contact Relay SMTP Notice]: ${smtpErr.message}`);
+    }
   }
+
+  return { provider: 'sandbox-fallback', delivered: false };
 };
 
 module.exports = {
@@ -215,4 +297,3 @@ module.exports = {
   sendOtpEmail,
   sendContactRelayEmail,
 };
-

@@ -10,15 +10,23 @@ export const OtpVerificationModal = ({
   onClose,
   onSuccess,
   redirectTo = '/dashboard',
+  initialSandboxOtp = '',
 }) => {
   const { verifyOtp, requestOtp } = useAuth();
   const navigate = useNavigate();
 
   const [otp, setOtp] = useState('');
+  const [sandboxOtp, setSandboxOtp] = useState(initialSandboxOtp);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+
+  useEffect(() => {
+    if (initialSandboxOtp) {
+      setSandboxOtp(initialSandboxOtp);
+    }
+  }, [initialSandboxOtp]);
 
   // Handle Escape key listener for accessible closing
   useEffect(() => {
@@ -67,7 +75,12 @@ export const OtpVerificationModal = ({
     try {
       const res = await requestOtp(email);
       if (res?.success) {
-        setInfo('A fresh 6-digit verification code has been dispatched to your email.');
+        if (res.sandboxOtp) {
+          setSandboxOtp(res.sandboxOtp);
+          setInfo('Verification code refreshed. (Instant sandbox code available below).');
+        } else {
+          setInfo('A fresh 6-digit verification code has been dispatched to your email.');
+        }
       } else {
         setError(res?.error || 'Failed to dispatch new OTP.');
       }
@@ -115,6 +128,27 @@ export const OtpVerificationModal = ({
           >
             <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
             <span>{info}</span>
+          </div>
+        )}
+
+        {sandboxOtp && (
+          <div className="mb-4 p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-center animate-fade-in backdrop-blur-md">
+            <p className="text-[11px] text-cyan-300 font-medium mb-1 flex items-center justify-center gap-1.5 font-mono">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              Cloud Sandbox Instant Code:
+            </p>
+            <div className="text-2xl font-mono font-bold tracking-widest text-cyan-400 my-1">
+              {sandboxOtp}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOtp(sandboxOtp);
+              }}
+              className="text-[11px] text-cyan-300 hover:text-white underline font-semibold transition inline-flex items-center gap-1"
+            >
+              Click to auto-fill code &rarr;
+            </button>
           </div>
         )}
 

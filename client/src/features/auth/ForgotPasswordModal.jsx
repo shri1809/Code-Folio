@@ -27,6 +27,7 @@ export const ForgotPasswordModal = ({
   const [step, setStep] = useState(1); // 1: Request OTP, 2: Enter OTP & New Password
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
+  const [sandboxOtp, setSandboxOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -88,9 +89,12 @@ export const ForgotPasswordModal = ({
     try {
       const res = await requestOtp(email.trim());
       if (res?.success) {
+        if (res.sandboxOtp) {
+          setSandboxOtp(res.sandboxOtp);
+        }
         setStep(2);
         setCountdown(60);
-        setInfo(`A 6-digit verification code has been dispatched to ${email.trim()}.`);
+        setInfo(res.sandboxOtp ? 'Verification code generated! (Sandbox code available below).' : `A 6-digit verification code has been dispatched to ${email.trim()}.`);
       } else {
         setError(res?.error || 'Unable to dispatch verification code.');
       }
@@ -115,8 +119,11 @@ export const ForgotPasswordModal = ({
     try {
       const res = await requestOtp(email.trim());
       if (res?.success) {
+        if (res.sandboxOtp) {
+          setSandboxOtp(res.sandboxOtp);
+        }
         setCountdown(60);
-        setInfo('A fresh 6-digit code has been sent to your email.');
+        setInfo(res.sandboxOtp ? 'Verification code refreshed! (Sandbox code available below).' : 'A fresh 6-digit code has been sent to your email.');
       } else {
         setError(res?.error || 'Failed to resend code.');
       }
@@ -276,6 +283,25 @@ export const ForgotPasswordModal = ({
         {/* STEP 2: VERIFY OTP & ENTER NEW PASSWORD */}
         {step === 2 && (
           <form onSubmit={handleResetPassword} className="space-y-4">
+            {sandboxOtp && (
+              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-center animate-fade-in backdrop-blur-md">
+                <p className="text-[11px] text-cyan-300 font-medium mb-1 flex items-center justify-center gap-1 font-mono">
+                  <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+                  Cloud Sandbox Instant Code:
+                </p>
+                <div className="text-2xl font-mono font-bold tracking-widest text-cyan-400 my-1">
+                  {sandboxOtp}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOtp(sandboxOtp)}
+                  className="text-[11px] text-cyan-300 hover:text-white underline font-semibold transition"
+                >
+                  Click to auto-fill code &rarr;
+                </button>
+              </div>
+            )}
+
             {/* 6-Digit OTP */}
             <div>
               <div className="flex items-center justify-between mb-1.5">

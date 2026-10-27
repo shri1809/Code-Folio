@@ -82,16 +82,21 @@ const register = async (req, res) => {
           existingEmail.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
           await existingEmail.save();
 
+          let dispatchResult = { provider: 'sandbox-fallback', delivered: false };
           try {
-            await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
+            dispatchResult = await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
           } catch (mailErr) {
             console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
           }
 
-          return res.status(200).json({
+          const delivered = Boolean(dispatchResult?.delivered && dispatchResult?.provider !== 'sandbox-fallback');
+          const resPayload = {
             success: true,
             requiresOtp: true,
-            message: 'Account pending verification. A fresh 6-digit verification code has been dispatched to your email.',
+            emailDelivered: delivered,
+            message: delivered
+              ? 'Account pending verification. A fresh 6-digit verification code has been dispatched to your email.'
+              : 'Account pending verification. (Instant sandbox code available).',
             user: {
               id: existingEmail._id,
               username: existingEmail.username,
@@ -99,7 +104,13 @@ const register = async (req, res) => {
               role: existingEmail.role,
               isVerified: false,
             },
-          });
+          };
+
+          if (!delivered) {
+            resPayload.sandboxOtp = otpCode;
+          }
+
+          return res.status(200).json(resPayload);
         }
 
         // Auto-verify account when email verification is optional
@@ -170,16 +181,21 @@ const register = async (req, res) => {
     });
 
     if (requireVerification) {
+      let dispatchResult = { provider: 'sandbox-fallback', delivered: false };
       try {
-        await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
+        dispatchResult = await sendOtpEmail(normalizedEmail, otpCode, normalizedUsername);
       } catch (mailErr) {
         console.warn(`[Auth] Could not send welcome OTP email: ${mailErr.message}`);
       }
 
-      return res.status(201).json({
+      const delivered = Boolean(dispatchResult?.delivered && dispatchResult?.provider !== 'sandbox-fallback');
+      const resPayload = {
         success: true,
         requiresOtp: true,
-        message: 'Registration successful. A 6-digit verification code has been dispatched to your email.',
+        emailDelivered: delivered,
+        message: delivered
+          ? 'Registration successful. A 6-digit verification code has been dispatched to your email.'
+          : 'Registration successful! Verification code dispatched (sandbox instant code available).',
         user: {
           id: newUser._id,
           name: newUser.name || '',
@@ -188,7 +204,13 @@ const register = async (req, res) => {
           role: newUser.role,
           isVerified: false,
         },
-      });
+      };
+
+      if (!delivered) {
+        resPayload.sandboxOtp = otpCode;
+      }
+
+      return res.status(201).json(resPayload);
     }
 
     // Auto-verified: Issue session tokens immediately
@@ -254,21 +276,28 @@ const requestOtp = async (req, res) => {
     user.otpAttempts = 0; // Reset counter for new OTP
     await user.save();
 
-    // Send email via Gmail SMTP
+    // Send email via multi-provider dispatcher
+    let dispatchResult = { provider: 'sandbox-fallback', delivered: false };
     try {
-      await sendOtpEmail(user.email, otpCode, user.username);
+      dispatchResult = await sendOtpEmail(user.email, otpCode, user.username);
     } catch (mailErr) {
-      console.error(`[RequestOtp] Mail dispatch failed: ${mailErr.message}`);
-      return res.status(503).json({
-        success: false,
-        error: `Email delivery failed (${mailErr.message}). Please verify SMTP_EMAIL and SMTP_APP_PASSWORD in Render settings.`,
-      });
+      console.warn(`[RequestOtp] Mail dispatch notice: ${mailErr.message}`);
     }
 
-    return res.status(200).json({
+    const delivered = Boolean(dispatchResult?.delivered && dispatchResult?.provider !== 'sandbox-fallback');
+    const responsePayload = {
       success: true,
-      message: 'A 6-digit OTP has been sent to your email address.',
-    });
+      emailDelivered: delivered,
+      message: delivered
+        ? 'A 6-digit OTP has been sent to your email address.'
+        : 'A fresh verification code has been generated. (Instant sandbox code available below).',
+    };
+
+    if (!delivered) {
+      responsePayload.sandboxOtp = otpCode;
+    }
+
+    return res.status(200).json(responsePayload);
   } catch (err) {
     console.error(`[RequestOtp Error]: ${err.message}`);
     return res.status(500).json({

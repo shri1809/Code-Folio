@@ -19,6 +19,7 @@ export const RegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+  const [sandboxOtp, setSandboxOtp] = useState('');
 
   const cleanUsername = username.toLowerCase().trim();
   const isUsernameReserved = cleanUsername.length > 0 && RESERVED_LIST.includes(cleanUsername);
@@ -48,6 +49,9 @@ export const RegisterPage = () => {
         if (res.requiresOtp === false || res.user?.isVerified) {
           navigate('/dashboard', { replace: true });
         } else {
+          if (res.sandboxOtp) {
+            setSandboxOtp(res.sandboxOtp);
+          }
           setIsOtpModalOpen(true);
         }
       } else {
@@ -266,6 +270,7 @@ export const RegisterPage = () => {
         <OtpVerificationModal
           isOpen={isOtpModalOpen}
           email={email}
+          initialSandboxOtp={sandboxOtp}
           redirectTo="/profile"
           onClose={() => setIsOtpModalOpen(false)}
           onSuccess={() => navigate('/profile')}
