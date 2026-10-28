@@ -1382,4 +1382,18 @@ export const getRoleConfig = (roleId) => {
   return ROLES_MAP[baseId] || ROLES_MAP['fullstack-developer'];
 };
 
+/**
+ * Universal helper ensuring resume URLs are fully qualified and accessible
+ * Handles /api/uploads/..., https://..., and auto-prefixes missing protocols
+ */
+export const getSafeResumeHref = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
 

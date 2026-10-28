@@ -148,8 +148,8 @@ export const SettingsPage = () => {
     };
   }, [user, reset]);
 
-  // Handle local file selection for Resume / CV with honest validation
-  const handleFileUpload = (e) => {
+  // Handle local file selection for Resume / CV with honest validation and auto-upload
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -165,22 +165,39 @@ export const SettingsPage = () => {
       return;
     }
 
-    // Validate file size (max 5MB)
-    const MAX_SIZE = 5 * 1024 * 1024;
+    // Validate file size (max 10MB)
+    const MAX_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       setStatus({
         type: 'error',
-        text: `File size exceeds 5 MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). Please select a smaller document.`,
+        text: `File size exceeds 10 MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). Please select a smaller document.`,
       });
       e.target.value = '';
       return;
     }
 
     setSelectedFileName(`${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
-    setStatus({
-      type: 'success',
-      text: `Selected "${file.name}". Please paste your public share link (e.g. Google Drive, Dropbox, or personal site) in the field above to publish.`,
-    });
+
+    try {
+      const formData = new FormData();
+      formData.append('resume', file);
+      const res = await apiClient.post('/upload/resume', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.success && res.data?.url) {
+        setValue('profile.resumeUrl', res.data.url, { shouldDirty: true });
+        setStatus({
+          type: 'success',
+          text: `Resume "${file.name}" successfully uploaded and attached to your portfolio!`,
+        });
+      }
+    } catch (err) {
+      console.warn('Could not auto-upload resume file:', err.message);
+      setStatus({
+        type: 'error',
+        text: err.response?.data?.error || 'Failed to upload document. Please try again.',
+      });
+    }
   };
 
   // Profile and Domain submission
@@ -578,7 +595,7 @@ export const SettingsPage = () => {
                 </div>
                 {watchedResumeUrl && (
                   <a
-                    href={watchedResumeUrl}
+                    href={watchedResumeUrl.startsWith('http') || watchedResumeUrl.startsWith('/') ? watchedResumeUrl : `https://${watchedResumeUrl}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-mono"

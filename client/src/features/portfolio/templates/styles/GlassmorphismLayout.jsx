@@ -18,6 +18,7 @@ import {
 import { ContactModal } from '../../ContactModal';
 import Button from '../../../../components/ui/Button';
 import ImageWithFallback from '../../../../components/ImageWithFallback';
+import { getSafeResumeHref } from '../../rolesConfig';
 
 export const GlassmorphismLayout = ({ data, roleConfig, isMobilePreview = false }) => {
   const [activeTab, setActiveTab] = useState('projects');
@@ -72,7 +73,7 @@ export const GlassmorphismLayout = ({ data, roleConfig, isMobilePreview = false 
 
             <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
               {profile.resumeUrl && (
-                <a href={profile.resumeUrl} target="_blank" rel="noopener noreferrer">
+                <a href={getSafeResumeHref(profile.resumeUrl)} target="_blank" rel="noopener noreferrer">
                   <Button variant="glass" size="sm" className="gap-2 text-xs border-white/20 bg-white/5 backdrop-blur-xl">
                     <FileDown className="w-3.5 h-3.5 text-cyan-300" />
                     <span>CV / RESUME</span>

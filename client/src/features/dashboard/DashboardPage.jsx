@@ -11,6 +11,7 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 import { TemplateGalleryModal } from '../portfolio/TemplateGalleryModal';
 import { ShareModal } from '../../components/ShareModal';
 import { ProjectScreenshotUploader } from '../../components/ProjectScreenshotUploader';
+import { ResumeUploader } from '../../components/ResumeUploader';
 import {
   Save,
   ExternalLink,
@@ -1101,13 +1102,11 @@ export const DashboardPage = () => {
 
                 <div>
                   <label className="block text-xs font-medium text-slate-200 mb-1.5">
-                    Resume / CV Link
+                    Resume / CV Document
                   </label>
-                  <input
-                    type="text"
-                    placeholder="https://codefolio.dev/resumes/my-resume.pdf"
-                    {...register('profile.resumeUrl')}
-                    className="w-full px-3.5 py-2.5 glass-input rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition shadow-inner font-mono text-xs sm:text-sm"
+                  <ResumeUploader
+                    value={watchedValues.profile?.resumeUrl || ''}
+                    onChange={(newUrl) => setValue('profile.resumeUrl', newUrl, { shouldDirty: true })}
                   />
                 </div>
               </div>

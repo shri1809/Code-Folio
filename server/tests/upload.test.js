@@ -9,13 +9,16 @@ const mongoose = require('mongoose');
 const app = require('../src/app');
 const User = require('../src/models/User');
 const Upload = require('../src/models/Upload');
+const Portfolio = require('../src/models/Portfolio');
 const { generateAccessToken } = require('../src/services/tokenService');
 
 jest.mock('../src/models/User');
 jest.mock('../src/models/Upload');
+jest.mock('../src/models/Portfolio');
 
 const mockUserId = new mongoose.Types.ObjectId();
 const mockUploadId = new mongoose.Types.ObjectId();
+const mockResumeUploadId = new mongoose.Types.ObjectId();
 const mockUser = {
   _id: mockUserId,
   id: mockUserId.toString(),
@@ -42,12 +45,13 @@ beforeAll(async () => {
   csrfCookie = rawCookies.map((c) => c.split(';')[0]).join('; ');
 });
 
-describe('DIRECT DEVICE IMAGE UPLOADS (/api/upload & /api/uploads)', () => {
+describe('DIRECT DEVICE IMAGE & RESUME UPLOADS (/api/upload & /api/uploads)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     User.findById.mockReturnValue({
       select: jest.fn().mockResolvedValue(mockUser),
     });
+    Portfolio.findOneAndUpdate.mockResolvedValue({});
   });
 
   it('should reject unauthenticated upload with 401', async () => {
@@ -112,7 +116,7 @@ describe('DIRECT DEVICE IMAGE UPLOADS (/api/upload & /api/uploads)', () => {
     expect(getRes.body).toEqual(imageBuffer);
   });
 
-  it('should reject non-image file uploads with 400', async () => {
+  it('should reject non-image file uploads on /screenshot with 400', async () => {
     const res = await request(app)
       .post('/api/upload/screenshot')
       .set('Cookie', `accessToken=${testToken}; ${csrfCookie}`)
@@ -126,17 +130,63 @@ describe('DIRECT DEVICE IMAGE UPLOADS (/api/upload & /api/uploads)', () => {
     expect(res.body.success).toBe(false);
   });
 
-  it('should return 400 for invalid image ID format', async () => {
-    const res = await request(app).get('/api/uploads/invalid-not-an-objectid');
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('Invalid image identifier');
+  it('should successfully upload a PDF resume, update portfolio, and return direct URL', async () => {
+    const pdfBuffer = Buffer.from('%PDF-1.4 sample resume content');
+
+    Upload.create.mockResolvedValueOnce({
+      _id: mockResumeUploadId,
+      userId: mockUserId,
+      filename: 'shridhar_powar_resume.pdf',
+      contentType: 'application/pdf',
+      size: pdfBuffer.length,
+      data: pdfBuffer,
+    });
+
+    const res = await request(app)
+      .post('/api/upload/resume')
+      .set('Cookie', `accessToken=${testToken}; ${csrfCookie}`)
+      .set('x-csrf-token', csrfToken)
+      .attach('resume', pdfBuffer, {
+        filename: 'shridhar_powar_resume.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.url).toBe(`/api/uploads/${mockResumeUploadId}`);
+    expect(Portfolio.findOneAndUpdate).toHaveBeenCalledWith(
+      { userId: mockUserId },
+      { $set: { 'profile.resumeUrl': `/api/uploads/${mockResumeUploadId}` } },
+      { new: true, upsert: true }
+    );
+
+    // Verify public GET retrieval of the uploaded PDF resume
+    Upload.findById.mockResolvedValueOnce({
+      _id: mockResumeUploadId,
+      filename: 'shridhar_powar_resume.pdf',
+      contentType: 'application/pdf',
+      size: pdfBuffer.length,
+      data: pdfBuffer,
+    });
+
+    const getRes = await request(app).get(res.body.url);
+    expect(getRes.status).toBe(200);
+    expect(getRes.headers['content-type']).toBe('application/pdf');
+    expect(getRes.headers['content-disposition']).toContain('inline');
+    expect(getRes.headers['content-disposition']).toContain('shridhar_powar_resume.pdf');
+    expect(getRes.body).toEqual(pdfBuffer);
   });
 
-  it('should return 404 for non-existent image ID', async () => {
+  it('should return 400 for invalid file ID format', async () => {
+    const res = await request(app).get('/api/uploads/invalid-not-an-objectid');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid file identifier');
+  });
+
+  it('should return 404 for non-existent file ID', async () => {
     Upload.findById.mockResolvedValueOnce(null);
     const nonExistentId = new mongoose.Types.ObjectId();
     const res = await request(app).get(`/api/uploads/${nonExistentId}`);
     expect(res.status).toBe(404);
   });
 });
-

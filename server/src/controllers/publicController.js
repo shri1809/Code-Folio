@@ -7,6 +7,16 @@ const { sendContactRelayEmail } = require('../services/mailService');
  * Helper to strip internal/sensitive fields and format sanitized public response
  */
 const sanitizePublicPortfolio = (user, portfolio) => {
+  let resumeUrl = portfolio?.profile?.resumeUrl || '';
+  if (resumeUrl && typeof resumeUrl === 'string') {
+    const trimmed = resumeUrl.trim();
+    if (trimmed && !trimmed.startsWith('/') && !trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      resumeUrl = `https://${trimmed}`;
+    } else {
+      resumeUrl = trimmed;
+    }
+  }
+
   return {
     user: {
       username: user.username,
@@ -24,7 +34,7 @@ const sanitizePublicPortfolio = (user, portfolio) => {
           twitter: portfolio?.profile?.socialLinks?.twitter || '',
           website: portfolio?.profile?.socialLinks?.website || '',
         },
-        resumeUrl: portfolio?.profile?.resumeUrl || '',
+        resumeUrl,
       },
       skills: {
         frontend: portfolio?.skills?.frontend || [],

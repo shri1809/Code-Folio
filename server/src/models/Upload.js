@@ -11,7 +11,7 @@ const uploadSchema = new mongoose.Schema(
     filename: {
       type: String,
       trim: true,
-      default: 'screenshot.webp',
+      default: 'document.pdf',
       maxlength: [255, 'Filename cannot exceed 255 characters'],
     },
     contentType: {
@@ -24,12 +24,17 @@ const uploadSchema = new mongoose.Schema(
         'image/webp',
         'image/gif',
         'image/svg+xml',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/octet-stream',
+        'text/plain',
       ],
     },
     size: {
       type: Number,
       required: true,
-      max: [5 * 1024 * 1024, 'File size cannot exceed 5MB'],
+      max: [10 * 1024 * 1024, 'File size cannot exceed 10MB'],
     },
     data: {
       type: Buffer,
@@ -42,4 +47,3 @@ const uploadSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('Upload', uploadSchema);
-

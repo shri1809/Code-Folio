@@ -3,11 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import apiClient from '../../api/client';
 import { templateMap, DefaultLayout, resolveTemplateComponent } from './templates';
-import { getRoleConfig } from './rolesConfig';
+import { getRoleConfig, getSafeResumeHref } from './rolesConfig';
 import ContactModal from './ContactModal';
 import ShareModal from '../../components/ShareModal';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import { UserX, ArrowLeft, RefreshCw, Share2 } from 'lucide-react';
+import { UserX, ArrowLeft, RefreshCw, Share2, FileDown } from 'lucide-react';
 
 export const PublicPortfolioPage = () => {
   const { username } = useParams();
@@ -139,8 +139,21 @@ export const PublicPortfolioPage = () => {
           username={user.username}
         />
 
-        {/* Floating Quick Share Button */}
-        <div className="fixed bottom-6 right-6 z-40">
+        {/* Floating Actions: CV / Resume & Share Buttons */}
+        <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
+          {profile.resumeUrl && (
+            <a
+              href={getSafeResumeHref(profile.resumeUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold border border-cyan-400/40 shadow-[0_10px_30px_rgba(6,182,212,0.4)] backdrop-blur-xl text-xs uppercase tracking-wider transition hover:scale-105 active:scale-95 group cursor-pointer"
+              title="View or download verified CV / Resume"
+            >
+              <FileDown className="w-3.5 h-3.5 text-cyan-200 group-hover:text-white transition-colors" />
+              <span>Resume / CV</span>
+            </a>
+          )}
+
           <button
             type="button"
             onClick={() => setIsShareOpen(true)}

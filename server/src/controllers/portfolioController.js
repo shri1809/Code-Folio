@@ -114,7 +114,13 @@ const updateMyPortfolio = async (req, res) => {
       portfolio.profile.socialLinks.linkedin = profile.socialLinks?.linkedin ?? portfolio.profile.socialLinks.linkedin ?? '';
       portfolio.profile.socialLinks.twitter = profile.socialLinks?.twitter ?? portfolio.profile.socialLinks.twitter ?? '';
       portfolio.profile.socialLinks.website = profile.socialLinks?.website ?? portfolio.profile.socialLinks.website ?? '';
-      portfolio.profile.resumeUrl = profile.resumeUrl !== undefined ? profile.resumeUrl : (portfolio.profile.resumeUrl || '');
+      if (profile.resumeUrl !== undefined) {
+        let resumeVal = profile.resumeUrl ? String(profile.resumeUrl).trim() : '';
+        if (resumeVal && !resumeVal.startsWith('/') && !resumeVal.startsWith('http://') && !resumeVal.startsWith('https://')) {
+          resumeVal = `https://${resumeVal}`;
+        }
+        portfolio.profile.resumeUrl = resumeVal;
+      }
     }
 
     if (skills) {

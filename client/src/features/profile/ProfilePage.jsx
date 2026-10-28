@@ -122,8 +122,8 @@ export const ProfilePage = () => {
     };
   }, [user, reset]);
 
-  // Handle local file selection for Resume / CV with honest validation
-  const handleFileSelection = (e) => {
+  // Handle local file selection for Resume / CV with honest validation and auto-upload
+  const handleFileSelection = async (e) => {
     setFileError('');
     const file = e.target.files?.[0];
     if (!file) return;
@@ -147,17 +147,32 @@ export const ProfilePage = () => {
       return;
     }
 
-    // Record verified local file info without setting fake remote URLs
+    // Record verified local file info
     setLocalFileInfo({
       name: file.name,
       size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
       type: file.type || ext.toUpperCase(),
     });
+
+    // Auto-upload document to MongoDB storage so it is permanently accessible for user and visitors
+    try {
+      const formData = new FormData();
+      formData.append('resume', file);
+      const res = await apiClient.post('/upload/resume', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.success && res.data?.url) {
+        setValue('profile.resumeUrl', res.data.url, { shouldDirty: true });
+      }
+    } catch (err) {
+      console.warn('Could not auto-upload resume file:', err.message);
+    }
   };
 
   const handleClearLocalFile = () => {
     setLocalFileInfo(null);
     setFileError('');
+    setValue('profile.resumeUrl', '', { shouldDirty: true });
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -489,7 +504,7 @@ export const ProfilePage = () => {
                 {watchedResumeUrl && (
                   <div className="absolute right-2.5 flex items-center gap-1">
                     <a
-                      href={watchedResumeUrl.startsWith('http') ? watchedResumeUrl : `https://${watchedResumeUrl}`}
+                      href={watchedResumeUrl.startsWith('http') || watchedResumeUrl.startsWith('/') ? watchedResumeUrl : `https://${watchedResumeUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-1 rounded text-slate-400 hover:text-cyan-300 transition"
