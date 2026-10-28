@@ -132,6 +132,9 @@ const portfolioSchema = new mongoose.Schema(
   }
 );
 
+// Prevent NoSQL operator injection in queries
+portfolioSchema.set('strictQuery', true);
+
 const Portfolio = mongoose.model('Portfolio', portfolioSchema);
 
 module.exports = Portfolio;

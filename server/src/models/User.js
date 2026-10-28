@@ -108,6 +108,9 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// Prevent NoSQL operator injection in queries
+userSchema.set('strictQuery', true);
+
 // Enforce uniqueness only for users who have defined a valid customDomain string
 userSchema.index(
   { customDomain: 1 },

@@ -69,8 +69,8 @@ const validateRegister = [
   body('password')
     .isString()
     .withMessage('Password must be a string')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long'),
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Password must be between 8 and 128 characters long'),
   handleValidationErrors,
 ];
 
@@ -87,7 +87,9 @@ const validateLogin = [
     .isString()
     .withMessage('Password must be a string')
     .notEmpty()
-    .withMessage('Password is required'),
+    .withMessage('Password is required')
+    .isLength({ max: 128 })
+    .withMessage('Password cannot exceed 128 characters'),
   handleValidationErrors,
 ];
 
@@ -129,12 +131,14 @@ const validateChangePassword = [
     .isString()
     .withMessage('Current password must be a string')
     .notEmpty()
-    .withMessage('Current password is required'),
+    .withMessage('Current password is required')
+    .isLength({ max: 128 })
+    .withMessage('Current password cannot exceed 128 characters'),
   body('newPassword')
     .isString()
     .withMessage('New password must be a string')
-    .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters long'),
+    .isLength({ min: 8, max: 128 })
+    .withMessage('New password must be between 8 and 128 characters long'),
   handleValidationErrors,
 ];
 
@@ -158,8 +162,8 @@ const validateResetPassword = [
   body('newPassword')
     .isString()
     .withMessage('New password must be a string')
-    .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters long'),
+    .isLength({ min: 8, max: 128 })
+    .withMessage('New password must be between 8 and 128 characters long'),
   handleValidationErrors,
 ];
 
