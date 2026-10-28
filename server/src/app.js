@@ -14,15 +14,8 @@ const app = express();
 
 // Reverse Proxy Configuration:
 // Topology: Browser -> [Vercel Edge] -> [Render Load Balancer (Envoy)] -> Node.js Express
-// Trust proxy is set to 1 to trust the immediate Render reverse proxy.
-// Assumptions:
-// 1. Render terminates TLS and forwards X-Forwarded-Proto ('https') and X-Forwarded-For.
-// 2. Setting '1' trusts the first hop (Render ingress), preventing untrusted clients from spoofing
-//    arbitrary IP addresses via client-crafted X-Forwarded-For headers.
-// 3. For direct Render requests, req.ip resolves to the true client IP.
-// 4. For requests proxied via Vercel rewrites (2 hops), req.ip resolves to the Vercel edge IP.
-// 5. req.secure evaluates to true over HTTPS, enabling Secure cookies in production.
-app.set('trust proxy', 1);
+// Trust proxy is set to true to correctly resolve the true client IP from X-Forwarded-For across Vercel and Render proxies.
+app.set('trust proxy', true);
 
 // 1. HTTP Security Headers with Helmet
 app.use(

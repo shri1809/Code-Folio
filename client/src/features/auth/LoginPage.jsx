@@ -39,6 +39,8 @@ export const LoginPage = () => {
     } catch (err) {
       if (err.response?.status === 502 || err.response?.status === 503 || err.response?.status === 504) {
         setError('The server is waking up from idle sleep (Render free tier). Please wait a few seconds and try again.');
+      } else if (err.response?.status === 429) {
+        setError('Server is processing previous requests. Please wait a moment and try again.');
       } else {
         setError(
           err.response?.data?.error || 'Login failed. Please verify your credentials.'

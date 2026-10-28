@@ -2,11 +2,12 @@ const rateLimit = require('express-rate-limit');
 
 /**
  * Strict rate limiter for sensitive authentication & contact form routes
- * Max 5 requests per 15-minute window per IP
+ * Max 30 requests per 15-minute window per IP with failed request immunity
  */
 const strictRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per window
+  max: 30, // Limit each IP to 30 requests per window (accommodates retries & cold starts)
+  skipFailedRequests: true, // Never penalize users when requests fail due to Render cold starts (502/504)
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
   skip: (req) => {
@@ -19,7 +20,7 @@ const strictRateLimiter = rateLimit({
   keyGenerator: (req) => req.headers['x-test-ip'] || req.ip || '127.0.0.1',
   message: {
     success: false,
-    error: 'Too many requests from this IP, please try again after 15 minutes.',
+    error: 'Too many requests from this IP, please try again after a few minutes.',
     statusCode: 429,
   },
   validate: false,
@@ -27,11 +28,12 @@ const strictRateLimiter = rateLimit({
 
 /**
  * Standard rate limiter for general API routes
- * Max 100 requests per 15-minute window per IP
+ * Max 300 requests per 15-minute window per IP
  */
 const generalRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 300,
+  skipFailedRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
